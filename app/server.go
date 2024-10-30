@@ -28,17 +28,29 @@ func main() {
 }
 
 func handleRequest(conn net.Conn) {
-	buf := make([]byte, 1024)
-	conn.Read(buf)
+	// buf := make([]byte, 1024)
+	// conn.Read(buf)
+	//
+	// req := string(buf)
+	//
+	// msg := []byte("HTTP/1.1 200 OK\r\n\r\n")
+	// if !strings.HasPrefix(req, "GET / HTTP/1.1") {
+	// 	msg = []byte("HTTP/1.1 404 Not Found\r\n\r\n")
+	// }
+	//
+	// conn.Write(msg)
+	//
+	// conn.Close()
 
-	req := string(buf)
+	req := make([]byte, 1024)
 
-	msg := []byte("HTTP/1.1 200 OK\r\n\r\n")
-	if !strings.HasPrefix(req, "GET / HTTP/1.1") {
-		msg = []byte("HTTP/1.1 404 Not Found\r\n\r\n")
+	conn.Read(req)
+
+	if !strings.HasPrefix(string(req), "GET / HTTP/1.1") {
+		conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+		conn.Close()
+		return
 	}
 
-	conn.Write(msg)
-
-	conn.Close()
+	conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
 }
