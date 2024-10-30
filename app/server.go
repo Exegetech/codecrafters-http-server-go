@@ -33,44 +33,89 @@ func handleRequest(conn net.Conn) {
 	conn.Read(buf)
 
 	req := string(buf)
-	statusLine := getStatusLine(req)
+	statusLine, headers := separateRequest(req)
 	path := getPath(statusLine)
 
 	if path == "/" {
-		msg := []byte("HTTP/1.1 200 OK\r\n\r\n")
-		conn.Write(msg)
-		conn.Close()
+		handleIndex(conn)
+		return
+	}
+
+	if path == "/user-agent" {
+		handleUserAgent(conn, headers)
 		return
 	}
 
 	if strings.HasPrefix(path, "/echo") {
-		arr := strings.Split(path, "/")
-		needsEcho := arr[2]
-
-		msg := []string{
-			"HTTP/1.1 200 OK\r\n",
-			"Content-Type: text/plain\r\n",
-			"Content-Length: " + strconv.Itoa(len(needsEcho)) + "\r\n",
-			"\r\n",
-			needsEcho,
-		}
-
-		join := strings.Join(msg, "")
-		conn.Write([]byte(join))
-		conn.Close()
+		handleEcho(conn, path)
+		return
 	}
 
+	handleNotFound(conn)
+}
+
+func handleIndex(conn net.Conn) {
+	msg := []byte("HTTP/1.1 200 OK\r\n\r\n")
+	conn.Write(msg)
+	conn.Close()
+}
+
+func handleEcho(conn net.Conn, path string) {
+	arr := strings.Split(path, "/")
+	needsEcho := arr[2]
+
+	msg := []string{
+		"HTTP/1.1 200 OK\r\n",
+		"Content-Type: text/plain\r\n",
+		"Content-Length: " + strconv.Itoa(len(needsEcho)) + "\r\n",
+		"\r\n",
+		needsEcho,
+	}
+
+	join := strings.Join(msg, "")
+	conn.Write([]byte(join))
+	conn.Close()
+}
+
+func handleUserAgent(conn net.Conn, headers []string) {
+	var userAgentHeader string
+	for _, header := range headers {
+		if strings.HasPrefix(header, "User-Agent") {
+			userAgentHeader = header
+			break
+		}
+	}
+
+	value := strings.Split(userAgentHeader, ": ")[1]
+
+	msg := []string{
+		"HTTP/1.1 200 OK\r\n",
+		"Content-Type: text/plain\r\n",
+		"Content-Length: " + strconv.Itoa(len(value)) + "\r\n",
+		"\r\n",
+		value,
+	}
+
+	join := strings.Join(msg, "")
+	conn.Write([]byte(join))
+	conn.Close()
+}
+
+func handleNotFound(conn net.Conn) {
 	msg := []byte("HTTP/1.1 404 Not Found\r\n\r\n")
 	conn.Write(msg)
 	conn.Close()
 }
 
+func separateRequest(req string) (string, []string) {
+	arr := strings.Split(req, "\r\n")
+	statusLine := arr[0]
+	headers := arr[1:]
+
+	return statusLine, headers
+}
+
 func getPath(str string) string {
 	arr := strings.Split(str, " ")
 	return arr[1]
-}
-
-func getStatusLine(str string) string {
-	arr := strings.Split(str, "\r\n")
-	return arr[0]
 }
