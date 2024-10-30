@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net"
 	"os"
@@ -12,6 +13,9 @@ var _ = net.Listen
 var _ = os.Exit
 
 func main() {
+	tmpdir := flag.String("directory", "/", "Directory to serve files from")
+	flag.Parse()
+
 	listener, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
 		log.Fatalln("Failed to bind to port 4221")
@@ -24,11 +28,11 @@ func main() {
 			log.Fatalln("Error accepting connection: ", err.Error())
 		}
 
-		go handleRequest(conn)
+		go handleRequest(conn, tmpdir)
 	}
 }
 
-func handleRequest(conn net.Conn) {
+func handleRequest(conn net.Conn, tmpdir *string) {
 	buf := make([]byte, 1024)
 	conn.Read(buf)
 
@@ -52,7 +56,7 @@ func handleRequest(conn net.Conn) {
 	}
 
 	if strings.HasPrefix(path, "/files") {
-		handleFiles(conn, path)
+		handleFiles(conn, path, tmpdir)
 		return
 	}
 
@@ -106,11 +110,11 @@ func handleUserAgent(conn net.Conn, headers []string) {
 	conn.Close()
 }
 
-func handleFiles(conn net.Conn, path string) {
+func handleFiles(conn net.Conn, path string, tmpdir *string) {
 	arr := strings.Split(path, "/")
 	filename := arr[2]
 
-	content, err := os.ReadFile("/tmp" + filename)
+	content, err := os.ReadFile(*tmpdir + filename)
 	if err != nil {
 		handleNotFound(conn)
 		return
