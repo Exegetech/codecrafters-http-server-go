@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -51,6 +52,11 @@ func handleRequest(conn net.Conn) {
 		return
 	}
 
+	if strings.HasPrefix(path, "/files") {
+		handleFiles(conn, path)
+		return
+	}
+
 	handleNotFound(conn)
 }
 
@@ -94,6 +100,29 @@ func handleUserAgent(conn net.Conn, headers []string) {
 		"Content-Length: " + strconv.Itoa(len(value)) + "\r\n",
 		"\r\n",
 		value,
+	}
+
+	join := strings.Join(msg, "")
+	conn.Write([]byte(join))
+	conn.Close()
+}
+
+func handleFiles(conn net.Conn, path string) {
+	arr := strings.Split(path, "/")
+	filename := arr[2]
+
+	content, err := os.ReadFile("/tmp" + filename)
+	if err != nil {
+		handleNotFound(conn)
+		return
+	}
+
+	msg := []string{
+		"HTTP/1.1 200 OK\r\n",
+		"Content-Type: application/octet-stream\r\n",
+		"Content-Length: " + strconv.Itoa(len(content)) + "\r\n",
+		"\r\n",
+		string(content),
 	}
 
 	join := strings.Join(msg, "")
