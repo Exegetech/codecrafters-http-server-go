@@ -4,6 +4,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -32,13 +33,44 @@ func handleRequest(conn net.Conn) {
 	conn.Read(buf)
 
 	req := string(buf)
+	statusLine := getStatusLine(req)
+	path := getPath(statusLine)
 
-	msg := []byte("HTTP/1.1 200 OK\r\n\r\n")
-	if !strings.HasPrefix(req, "GET / HTTP/1.1") {
-		msg = []byte("HTTP/1.1 404 Not Found\r\n\r\n")
+	if path == "/" {
+		msg := []byte("HTTP/1.1 200 OK\r\n\r\n")
+		conn.Write(msg)
+		conn.Close()
+		return
 	}
 
-	conn.Write(msg)
+	if strings.HasPrefix(path, "/echo") {
+		arr := strings.Split(path, "/")
+		needsEcho := arr[2]
 
+		msg := []string{
+			"HTTP/1.1 200 OK\r\n",
+			"Content-Type: text/plain\r\n",
+			"Content-Length: " + strconv.Itoa(len(needsEcho)) + "\r\n",
+			"\r\n",
+			needsEcho,
+		}
+
+		join := strings.Join(msg, "")
+		conn.Write([]byte(join))
+		conn.Close()
+	}
+
+	msg := []byte("HTTP/1.1 404 Not Found\r\n\r\n")
+	conn.Write(msg)
 	conn.Close()
+}
+
+func getPath(str string) string {
+	arr := strings.Split(str, " ")
+	return arr[1]
+}
+
+func getStatusLine(str string) string {
+	arr := strings.Split(str, "\r\n")
+	return arr[0]
 }
