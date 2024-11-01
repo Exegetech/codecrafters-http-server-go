@@ -35,16 +35,16 @@ func handleUserAgent(conn net.Conn, req request) {
 
 func handleEcho(conn net.Conn, req request) {
 	arr := strings.Split(req.path, "/")
-	needsEcho := arr[2]
+	value := arr[2]
 
 	acceptEncoding, ok := req.headers["Accept-Encoding"]
-	if !ok || acceptEncoding != "gzip" {
+	if !ok || !strings.Contains(acceptEncoding, "gzip") {
 		msg := []string{
 			"HTTP/1.1 200 OK\r\n",
 			"Content-Type: text/plain\r\n",
-			"Content-Length: " + strconv.Itoa(len(needsEcho)) + "\r\n",
+			"Content-Length: " + strconv.Itoa(len(value)) + "\r\n",
 			"\r\n",
-			needsEcho,
+			value,
 		}
 
 		join := strings.Join(msg, "")
@@ -57,14 +57,15 @@ func handleEcho(conn net.Conn, req request) {
 		"HTTP/1.1 200 OK\r\n",
 		"Content-Type: text/plain\r\n",
 		"Content-Encoding: gzip\r\n",
-		"Content-Length: " + strconv.Itoa(len(needsEcho)) + "\r\n",
+		"Content-Length: " + strconv.Itoa(len(value)) + "\r\n",
 		"\r\n",
-		needsEcho,
+		value,
 	}
 
 	join := strings.Join(msg, "")
 	conn.Write([]byte(join))
 	conn.Close()
+
 }
 
 func handleGetFile(conn net.Conn, req request, tmpdir *string) {
