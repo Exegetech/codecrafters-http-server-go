@@ -5,12 +5,18 @@ import (
 	"log"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 )
 
 var _ = net.Listen
 var _ = os.Exit
+
+type method string
+
+var (
+	get  method = "GET"
+	post method = "POST"
+)
 
 func main() {
 	tmpdir := flag.String("directory", "/", "Directory to serve files from")
@@ -25,7 +31,7 @@ func main() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Fatalln("Error accepting connection: ", err.Error())
+			log.Println("Error accepting connection: ", err.Error())
 		}
 
 		go handleRequest(conn, tmpdir)
@@ -36,139 +42,32 @@ func handleRequest(conn net.Conn, tmpdir *string) {
 	buf := make([]byte, 1024)
 	conn.Read(buf)
 
-	req := string(buf)
-	statusLine, headers, body := separateRequest(req)
-	method, path := getMethodPath(statusLine)
+	req := parseRequest(buf)
 
-	if path == "/" {
+	if req.method == string(get) && req.path == "/" {
 		handleIndex(conn)
 		return
 	}
 
-	if path == "/user-agent" {
-		handleUserAgent(conn, headers)
+	if req.method == string(get) && req.path == "/user-agent" {
+		handleUserAgent(conn, req)
 		return
 	}
 
-	if strings.HasPrefix(path, "/echo") {
-		handleEcho(conn, path)
+	if req.method == string(get) && strings.HasPrefix(req.path, "/echo") {
+		handleEcho(conn, req)
 		return
 	}
 
-	if strings.HasPrefix(path, "/files") {
-		handleFiles(conn, method, path, body, tmpdir)
+	if req.method == string(get) && strings.HasPrefix(req.path, "/files") {
+		handleGetFile(conn, req, tmpdir)
+		return
+	}
+
+	if req.method == string(post) && strings.HasPrefix(req.path, "/files") {
+		handleWriteFile(conn, req, tmpdir)
 		return
 	}
 
 	handleNotFound(conn)
-}
-
-func handleIndex(conn net.Conn) {
-	msg := []byte("HTTP/1.1 200 OK\r\n\r\n")
-	conn.Write(msg)
-	conn.Close()
-}
-
-func handleEcho(conn net.Conn, path string) {
-	arr := strings.Split(path, "/")
-	needsEcho := arr[2]
-
-	msg := []string{
-		"HTTP/1.1 200 OK\r\n",
-		"Content-Type: text/plain\r\n",
-		"Content-Length: " + strconv.Itoa(len(needsEcho)) + "\r\n",
-		"\r\n",
-		needsEcho,
-	}
-
-	join := strings.Join(msg, "")
-	conn.Write([]byte(join))
-	conn.Close()
-}
-
-func handleUserAgent(conn net.Conn, headers []string) {
-	var userAgentHeader string
-	for _, header := range headers {
-		if strings.HasPrefix(header, "User-Agent") {
-			userAgentHeader = header
-			break
-		}
-	}
-
-	value := strings.Split(userAgentHeader, ": ")[1]
-
-	msg := []string{
-		"HTTP/1.1 200 OK\r\n",
-		"Content-Type: text/plain\r\n",
-		"Content-Length: " + strconv.Itoa(len(value)) + "\r\n",
-		"\r\n",
-		value,
-	}
-
-	join := strings.Join(msg, "")
-	conn.Write([]byte(join))
-	conn.Close()
-}
-
-func handleFiles(conn net.Conn, method, path, body string, tmpdir *string) {
-	arr := strings.Split(path, "/")
-	filename := arr[2]
-
-	if method == "POST" {
-		cleaned := strings.Trim(body, "\x00")
-		err := os.WriteFile(*tmpdir+filename, []byte(cleaned), 0644)
-		if err != nil {
-			log.Println("Error writing file")
-		}
-
-		msg := []string{
-			"HTTP/1.1 201 Created\r\n",
-			"\r\n",
-		}
-
-		join := strings.Join(msg, "")
-		conn.Write([]byte(join))
-		conn.Close()
-		return
-	}
-
-	if method == "GET" {
-		content, err := os.ReadFile(*tmpdir + filename)
-		if err != nil {
-			handleNotFound(conn)
-			return
-		}
-
-		msg := []string{
-			"HTTP/1.1 200 OK\r\n",
-			"Content-Type: application/octet-stream\r\n",
-			"Content-Length: " + strconv.Itoa(len(content)) + "\r\n",
-			"\r\n",
-			string(content),
-		}
-
-		join := strings.Join(msg, "")
-		conn.Write([]byte(join))
-		conn.Close()
-	}
-}
-
-func handleNotFound(conn net.Conn) {
-	msg := []byte("HTTP/1.1 404 Not Found\r\n\r\n")
-	conn.Write(msg)
-	conn.Close()
-}
-
-func separateRequest(req string) (string, []string, string) {
-	arr := strings.Split(req, "\r\n")
-	statusLine := arr[0]
-	headers := arr[1 : len(arr)-1]
-	body := arr[len(arr)-1]
-
-	return statusLine, headers, body
-}
-
-func getMethodPath(str string) (string, string) {
-	arr := strings.Split(str, " ")
-	return arr[0], arr[1]
 }
