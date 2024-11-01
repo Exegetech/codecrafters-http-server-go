@@ -37,8 +37,8 @@ func handleRequest(conn net.Conn, tmpdir *string) {
 	conn.Read(buf)
 
 	req := string(buf)
-	statusLine, headers := separateRequest(req)
-	path := getPath(statusLine)
+	statusLine, headers, body := separateRequest(req)
+	method, path := getMethodPath(statusLine)
 
 	if path == "/" {
 		handleIndex(conn)
@@ -56,7 +56,7 @@ func handleRequest(conn net.Conn, tmpdir *string) {
 	}
 
 	if strings.HasPrefix(path, "/files") {
-		handleFiles(conn, path, tmpdir)
+		handleFiles(conn, method, path, body, tmpdir)
 		return
 	}
 
@@ -110,27 +110,47 @@ func handleUserAgent(conn net.Conn, headers []string) {
 	conn.Close()
 }
 
-func handleFiles(conn net.Conn, path string, tmpdir *string) {
+func handleFiles(conn net.Conn, method, path, body string, tmpdir *string) {
 	arr := strings.Split(path, "/")
 	filename := arr[2]
 
-	content, err := os.ReadFile(*tmpdir + filename)
-	if err != nil {
-		handleNotFound(conn)
+	if method == "POST" {
+		cleaned := strings.Trim(body, "\x00")
+		err := os.WriteFile(*tmpdir+filename, []byte(cleaned), 0644)
+		if err != nil {
+			log.Println("Error writing file")
+		}
+
+		msg := []string{
+			"HTTP/1.1 201 Created\r\n",
+			"\r\n",
+		}
+
+		join := strings.Join(msg, "")
+		conn.Write([]byte(join))
+		conn.Close()
 		return
 	}
 
-	msg := []string{
-		"HTTP/1.1 200 OK\r\n",
-		"Content-Type: application/octet-stream\r\n",
-		"Content-Length: " + strconv.Itoa(len(content)) + "\r\n",
-		"\r\n",
-		string(content),
-	}
+	if method == "GET" {
+		content, err := os.ReadFile(*tmpdir + filename)
+		if err != nil {
+			handleNotFound(conn)
+			return
+		}
 
-	join := strings.Join(msg, "")
-	conn.Write([]byte(join))
-	conn.Close()
+		msg := []string{
+			"HTTP/1.1 200 OK\r\n",
+			"Content-Type: application/octet-stream\r\n",
+			"Content-Length: " + strconv.Itoa(len(content)) + "\r\n",
+			"\r\n",
+			string(content),
+		}
+
+		join := strings.Join(msg, "")
+		conn.Write([]byte(join))
+		conn.Close()
+	}
 }
 
 func handleNotFound(conn net.Conn) {
@@ -139,15 +159,16 @@ func handleNotFound(conn net.Conn) {
 	conn.Close()
 }
 
-func separateRequest(req string) (string, []string) {
+func separateRequest(req string) (string, []string, string) {
 	arr := strings.Split(req, "\r\n")
 	statusLine := arr[0]
-	headers := arr[1:]
+	headers := arr[1 : len(arr)-1]
+	body := arr[len(arr)-1]
 
-	return statusLine, headers
+	return statusLine, headers, body
 }
 
-func getPath(str string) string {
+func getMethodPath(str string) (string, string) {
 	arr := strings.Split(str, " ")
-	return arr[1]
+	return arr[0], arr[1]
 }
